@@ -2,34 +2,17 @@
 #include <cmath>
 #include "Board.h"
 #include "TTC.h"
+#include "MCTS.h"
 
-class MCTSNode{
 
 
-    public:
-
-    // State of the game
-    Board::Board state;
-    // Parent note (MCTSNode object)
-    MCTSNode* parentNode = nullptr;
-    // Actions that can be taken from this state
-    Board::Action action;
-    // Turn
-    int player;
-    // List of children of the current MCTSNode
-    std::vector <MCTSNode*> children;
-    // Number of visits
-    int visits;
-    // Number of wins from this state
-    double wins;
-    // List of untried actions from this state
-    std::vector<Board::Action> untriedActions;
-
-    MCTSNode(Board::Board s){
+    MCTSNode::MCTSNode(Board::Board s, int p){
         state=s;
+        untriedActions = TicTacToe(s).playableMoves;
+        player = p;
     }
 
-    MCTSNode(Board::Board s, 
+    MCTSNode::MCTSNode(Board::Board s, 
         MCTSNode* pN,
         Board::Action a, 
         int p
@@ -39,23 +22,19 @@ class MCTSNode{
          parentNode = pN;
          action = a;
          player = p;
+         untriedActions = TicTacToe(s).playableMoves;
     }
 
-    MCTSNode(Board::Board s, Board::Action a, int p){
-        state = s;
-        action = a;
-        player = p;
-    }
 
-    bool isTerminalNode(){
-        if(TicTacToe(state).result==2){
-            return 0;
+    bool MCTSNode::isTerminalNode(){
+        if(TicTacToe(state).playableMoves.size()==0){
+            return true;
         }else{
-            return 1;
+            return false;
         }
     }
 
-    bool isFullyExpanded(){
+    bool MCTSNode::isFullyExpanded(){
         if (untriedActions.size()==0){
             return true;
         }else{
@@ -63,32 +42,35 @@ class MCTSNode{
         }
     }
 
-    MCTSNode* Expand(){
+    MCTSNode* MCTSNode::Expand(){
         if (!untriedActions.empty()){
             Board::Action nextAction = untriedActions.back();
+            untriedActions.pop_back();
 
             TicTacToe temp = TicTacToe(state);
             temp.Move(nextAction);
         
-            MCTSNode childNode = MCTSNode(temp.state,nextAction,temp.turn);
-            children.push_back(&childNode);
+            MCTSNode* childNode = new MCTSNode(temp.state,this,nextAction,temp.turn);
+            children.push_back(childNode);
 
-            return &childNode;
+            return childNode;
         }
+        return nullptr;
     }
 
-    MCTSNode* BestChild(){
+    MCTSNode* MCTSNode::BestChild(){
 
         std::vector<double> childrenUCB; 
         double max = 0;
         int max_index = 0;
 
-        for (int i = 0; i<=children.size();++i){
+
+        for (int i = 0; i<children.size();++i){
             if (children[i]->visits==0){
                 return children[i];
             }
             double exploit = (double)children[i]->wins/children[i]->visits;
-            double explore = 1.4*sqrt(log(visits)/children[i]->visits);
+            double explore = 0.8*sqrt(log(visits)/children[i]->visits);
 
             if ((exploit+explore)>max){
                 max = exploit+explore;
@@ -98,18 +80,21 @@ class MCTSNode{
         return children[max_index];
     }
 
-    int Rollout(){
+    int MCTSNode::Rollout(){
         int winner = TicTacToe(state).Simulate();
         return winner;
     }
 
-    void BackPropagate(int winner){
+    void MCTSNode::BackPropagate(int winner){
         ++visits;
 
-        if(winner == 2){
+        if(winner == 0){
             wins+=0.5;
-        }else if(winner == player){
+        // I changed this so prob high chance of breaking
+        }else if(winner != player){
             wins+=1;
+        }else if(winner == player){
+            wins-=2;
         }
 
         if(parentNode){
@@ -118,10 +103,13 @@ class MCTSNode{
 
     }
 
-};
 
 Board::Action BestMove(Board::Board state, int numIter){
-    MCTSNode rootNode = MCTSNode(state);
+
+
+    MCTSNode rootNode = MCTSNode(state,TicTacToe(state).turn);
+
+    
 
     for(int i = 0; i<numIter;++i){
         MCTSNode* node = &rootNode;
@@ -139,12 +127,14 @@ Board::Action BestMove(Board::Board state, int numIter){
 
     int max = 0;
     int max_index = 0;
-    for (int i = 0; i<rootNode.children.size();++i){
-        if(rootNode.children[i]->visits>max){
+    for (int i = 0; i<rootNode.children.size();i++){
+        std::cerr << rootNode.children[i]->visits << "     "<< rootNode.children[i]->wins << std::endl;
+        if(rootNode.children[i]->wins > max){
             max = rootNode.children[i]->visits;
             max_index = i;
         }
     }
+    std::cerr << max << "     "<< max_index;
 
     return rootNode.children[max_index]->action;
 
@@ -152,7 +142,9 @@ Board::Action BestMove(Board::Board state, int numIter){
 
 int main(){
 
-    
+    TicTacToe a = TicTacToe();
+    a.PlayMCTS();
+
 
     return 0;
 }
